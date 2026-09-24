@@ -1,0 +1,5 @@
+devdocs/
+build/
+*.o
+*.a
+.claude/
