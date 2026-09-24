@@ -1,6 +1,6 @@
 #include "mode.hpp"
+#include "../util/data_dir.hpp"
 
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -10,15 +10,7 @@ namespace hypertension {
 namespace {
 
 auto state_path() -> std::filesystem::path {
-    std::filesystem::path base;
-    if (const char* xdg = std::getenv("XDG_DATA_HOME"); xdg && *xdg) {
-        base = xdg;
-    } else if (const char* home = std::getenv("HOME"); home && *home) {
-        base = std::filesystem::path(home) / ".local" / "share";
-    } else {
-        base = "/tmp";
-    }
-    return base / "hypertension" / "mode";
+    return user_data_dir() / "mode";
 }
 
 } // namespace
