@@ -1,12 +1,14 @@
 #include "achievements/achievements.hpp"
 #include "algol/algol.hpp"
 #include "cli/cli.hpp"
+#include "fortran/fortran.hpp"
 #include "math/bloom.hpp"
 #include "runtime/mode.hpp"
 #include "search/search.hpp"
 #include "util/timing.hpp"
 
 #include <array>
+#include <format>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -109,7 +111,7 @@ int run_extended_search(int value) {
     }
 
     std::cout << "\xe2\x9c\x93 Independent consensus        ALGOL 68      "
-              << hypertension::format_time(algol_result->elapsed_ns) << "\n\n";
+              << hypertension::format_time(algol_result->elapsed_ns) << "\n";
 
     // Consensus check: C++ and ALGOL must agree
     if (!hypertension::algol::consensus_agrees(cpp_result, *algol_result)) {
@@ -118,9 +120,31 @@ int run_extended_search(int value) {
         return 2;
     }
 
-    // Bloom is probabilistic: can false-positive but not false-negative for members.
-    // A present value that passes C++/ALGOL consensus is verified regardless of Bloom.
-    std::cout << "Consensus established.\n\n";
+    // Stage 4: FORTRAN 77 statistical confidence authority
+    hypertension::fortran::ConfidenceEvidence evidence{
+        static_cast<int>(DATASET.size()),
+        cpp_result.has_value(),
+        *bloom_result,
+        true,   // consensus was established above
+        cpp_result ? static_cast<int>(*cpp_result) : -1,
+        algol_result->index.value_or(-1)
+    };
+
+    std::string fortran_error;
+    auto conf_result = hypertension::fortran::statistical_confidence(evidence, fortran_error);
+
+    if (!conf_result.has_value()) {
+        std::cout << "\nFORTRAN 77 statistical authority unavailable.\n\n"
+                  << "Required: make fortran (needs gfortran)\n";
+        return 2;
+    }
+
+    std::cout << "\xe2\x9c\x93 Statistical confidence       FORTRAN 77    "
+              << hypertension::format_time(conf_result->elapsed_ns) << "\n\n";
+
+    std::cout << "Consensus established.\n"
+              << "Verification confidence: "
+              << std::format("{:.2f}", conf_result->confidence) << "%\n\n";
 
     if (cpp_result) {
         if (!hypertension::achievements::is_unlocked(hypertension::achievements::MATHEMATICALLY_CORRECT)) {

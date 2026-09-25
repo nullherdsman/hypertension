@@ -1,6 +1,7 @@
 #include "../src/achievements/achievements.hpp"
 #include "../src/algol/algol.hpp"
 #include "../src/brainfuck/brainfuck.hpp"
+#include "../src/fortran/fortran.hpp"
 #include "../src/math/bloom.hpp"
 #include "../src/search/search.hpp"
 #include "../src/util/data_dir.hpp"
@@ -292,6 +293,176 @@ void test_standard_runtime_without_a68g() {
     std::cout << "standard runtime without a68g: OK\n";
 }
 
+// --- fortran parse ---
+
+void test_fortran_parse_output() {
+    std::string err;
+
+    // Valid values
+    auto v1 = hypertension::fortran::parse_confidence_output("99.7426\n", err);
+    assert(v1.has_value() && *v1 > 99.0 && *v1 < 100.0);
+
+    auto v2 = hypertension::fortran::parse_confidence_output(" 98.5294\n", err);
+    assert(v2.has_value() && *v2 > 98.0 && *v2 < 99.0);
+
+    auto v3 = hypertension::fortran::parse_confidence_output("  0.0000\n", err);
+    assert(v3.has_value() && *v3 == 0.0);
+
+    auto v4 = hypertension::fortran::parse_confidence_output("100.0000\n", err);
+    assert(v4.has_value() && *v4 == 100.0);
+
+    // Malformed
+    assert(!hypertension::fortran::parse_confidence_output("",         err).has_value());
+    assert(!hypertension::fortran::parse_confidence_output("   \n",    err).has_value());
+    assert(!hypertension::fortran::parse_confidence_output("bad",      err).has_value());
+    assert(!hypertension::fortran::parse_confidence_output("99.7x",    err).has_value());
+
+    // NaN and Inf
+    assert(!hypertension::fortran::parse_confidence_output("nan",      err).has_value());
+    assert(!hypertension::fortran::parse_confidence_output("NaN",      err).has_value());
+    assert(!hypertension::fortran::parse_confidence_output("inf",      err).has_value());
+    assert(!hypertension::fortran::parse_confidence_output("Inf",      err).has_value());
+    assert(!hypertension::fortran::parse_confidence_output("-Inf",     err).has_value());
+
+    // Out of range
+    assert(!hypertension::fortran::parse_confidence_output("-0.0001",  err).has_value());
+    assert(!hypertension::fortran::parse_confidence_output("100.0001", err).has_value());
+
+    std::cout << "fortran parse output: OK\n";
+}
+
+void test_fortran_missing_binary() {
+    const char* old = std::getenv("HYPERTENSION_FORTRAN_BIN");
+    setenv("HYPERTENSION_FORTRAN_BIN", "/tmp/_nonexistent_ht_confidence", 1);
+
+    std::string err;
+    hypertension::fortran::ConfidenceEvidence ev{7, true, true, true, 3, 3};
+    auto result = hypertension::fortran::statistical_confidence(ev, err);
+
+    if (old) setenv("HYPERTENSION_FORTRAN_BIN", old, 1);
+    else     unsetenv("HYPERTENSION_FORTRAN_BIN");
+
+    assert(!result.has_value());
+    assert(!err.empty());
+    std::cout << "fortran missing binary: OK\n";
+}
+
+// --- fortran tests that require the compiled binary ---
+
+// Confidence model (see engine/confidence.f):
+//   U = 0.25 * RAGREE * R_BF / (1 + 0.10*N)
+//   RAGREE = 0.05, RBFYES = 0.35, RBFNO = 2.00
+//   BF "matches" when cpp_found == bf_positive
+//   confidence = 100*(1-U), clamped [0,100]
+//
+//   N=7, agree, bf matches:  U = 0.25*0.05*0.35/1.7 = 0.002574, conf = 99.7426%
+//   N=7, agree, bf mismatch: U = 0.25*0.05*2.00/1.7 = 0.014706, conf = 98.5294%
+
+void test_fortran_high_confidence_all_agree() {
+    if (!hypertension::fortran::fortran_available()) {
+        std::cout << "fortran high confidence: SKIPPED (binary not found)\n";
+        return;
+    }
+    std::string err;
+    // found=1, bf=1 (matches), agree=1, N=7 → 99.7426%
+    hypertension::fortran::ConfidenceEvidence ev{7, true, true, true, 3, 3};
+    auto r = hypertension::fortran::statistical_confidence(ev, err);
+    assert(r.has_value());
+    assert(r->confidence > 99.0 && r->confidence <= 100.0);
+    std::cout << "fortran high confidence (all agree): OK  conf=" << r->confidence << "%\n";
+}
+
+void test_fortran_absent_clean() {
+    if (!hypertension::fortran::fortran_available()) {
+        std::cout << "fortran absent clean: SKIPPED\n";
+        return;
+    }
+    std::string err;
+    // found=0, bf=0 (matches), agree=1, N=7 → 99.7426% (same as found+bf case)
+    hypertension::fortran::ConfidenceEvidence ev{7, false, false, true, -1, -1};
+    auto r = hypertension::fortran::statistical_confidence(ev, err);
+    assert(r.has_value());
+    assert(r->confidence > 99.0 && r->confidence <= 100.0);
+    std::cout << "fortran absent clean: OK  conf=" << r->confidence << "%\n";
+}
+
+void test_fortran_absent_bloom_false_positive() {
+    if (!hypertension::fortran::fortran_available()) {
+        std::cout << "fortran absent bloom false positive: SKIPPED\n";
+        return;
+    }
+    std::string err;
+    // found=0, bf=1 (mismatch — Bloom false positive), agree=1, N=7 → 98.5294%
+    hypertension::fortran::ConfidenceEvidence ev{7, false, true, true, -1, -1};
+    auto r = hypertension::fortran::statistical_confidence(ev, err);
+    assert(r.has_value());
+    // Lower confidence than clean case but still valid
+    assert(r->confidence > 0.0 && r->confidence <= 100.0);
+    // Specifically: mismatch factor raises uncertainty → lower than 99.7%
+    assert(r->confidence < 99.7);
+    std::cout << "fortran absent bloom false positive: OK  conf=" << r->confidence << "%\n";
+}
+
+void test_fortran_deterministic() {
+    if (!hypertension::fortran::fortran_available()) {
+        std::cout << "fortran deterministic: SKIPPED\n";
+        return;
+    }
+    std::string err;
+    hypertension::fortran::ConfidenceEvidence ev{7, true, true, true, 3, 3};
+    auto r1 = hypertension::fortran::statistical_confidence(ev, err);
+    auto r2 = hypertension::fortran::statistical_confidence(ev, err);
+    assert(r1.has_value() && r2.has_value());
+    assert(r1->confidence == r2->confidence);
+    std::cout << "fortran deterministic: OK\n";
+}
+
+void test_fortran_range() {
+    if (!hypertension::fortran::fortran_available()) {
+        std::cout << "fortran range: SKIPPED\n";
+        return;
+    }
+    std::string err;
+    // All combinations of boolean evidence
+    for (int cfnd : {0, 1})
+    for (int bfpos : {0, 1})
+    for (int agree : {0, 1}) {
+        hypertension::fortran::ConfidenceEvidence ev{
+            7, cfnd != 0, bfpos != 0, agree != 0,
+            cfnd ? 3 : -1, cfnd ? 3 : -1
+        };
+        auto r = hypertension::fortran::statistical_confidence(ev, err);
+        assert(r.has_value());
+        assert(r->confidence >= 0.0 && r->confidence <= 100.0);
+    }
+    std::cout << "fortran range: OK\n";
+}
+
+// ALGOL disagreement still fails BEFORE FORTRAN is invoked
+void test_algol_disagreement_before_fortran() {
+    using hypertension::algol::ConsensusResult;
+    using hypertension::algol::consensus_agrees;
+    // Disagree: C++ says index 3, ALGOL says index 2
+    assert(!consensus_agrees(std::optional<std::size_t>{3}, ConsensusResult{2, 0}));
+    // FORTRAN binary availability is irrelevant here — consensus gate fires first
+    std::cout << "algol disagreement before fortran: OK\n";
+}
+
+// Standard Runtime independence
+void test_standard_no_fortran() {
+    const char* old = std::getenv("HYPERTENSION_FORTRAN_BIN");
+    setenv("HYPERTENSION_FORTRAN_BIN", "/tmp/_nonexistent_ht_confidence", 1);
+
+    constexpr std::array<int, 4> data = {5, 10, 15, 20};
+    auto r = hypertension::find_index<int>(data, 15);
+    assert(r.has_value() && *r == std::size_t{2});
+
+    if (old) setenv("HYPERTENSION_FORTRAN_BIN", old, 1);
+    else     unsetenv("HYPERTENSION_FORTRAN_BIN");
+
+    std::cout << "standard no fortran: OK\n";
+}
+
 int main() {
     test_search();
     test_bf_basic();
@@ -311,6 +482,17 @@ int main() {
     test_bf_still_material();
     test_standard_runtime_independent();
     test_standard_runtime_without_a68g();
+
+    // fortran
+    test_fortran_parse_output();
+    test_fortran_missing_binary();
+    test_fortran_high_confidence_all_agree();
+    test_fortran_absent_clean();
+    test_fortran_absent_bloom_false_positive();
+    test_fortran_deterministic();
+    test_fortran_range();
+    test_algol_disagreement_before_fortran();
+    test_standard_no_fortran();
 
     std::cout << "\nAll tests passed.\n";
     return 0;
