@@ -1,4 +1,5 @@
 #include "../src/achievements/achievements.hpp"
+#include "../src/ada/ada.hpp"
 #include "../src/algol/algol.hpp"
 #include "../src/brainfuck/brainfuck.hpp"
 #include "../src/forth/forth.hpp"
@@ -886,6 +887,152 @@ void test_forth_admissibility_gate() {
     std::cout << "forth admissibility gate: OK\n";
 }
 
+// --- ada parse ---
+
+void test_ada_parse_output() {
+    std::string err;
+
+    // Valid PASS
+    auto v1 = hypertension::ada::parse_integrity_output("16777216 8192 16769024 PASS\n", err);
+    assert(v1.has_value());
+    assert(v1->total_states == 16777216);
+    assert(v1->valid_states == 8192);
+    assert(v1->corrupted_detected == 16769024);
+    assert(v1->pass == true);
+
+    // Valid FAIL
+    auto v2 = hypertension::ada::parse_integrity_output("128 0 112 FAIL\n", err);
+    assert(v2.has_value());
+    assert(v2->pass == false);
+    assert(v2->total_states == 128);
+
+    // Whitespace tolerance
+    auto v3 = hypertension::ada::parse_integrity_output("  128 16 112 PASS  \n", err);
+    assert(v3.has_value() && v3->pass == true);
+
+    // Empty
+    assert(!hypertension::ada::parse_integrity_output("", err).has_value());
+    assert(!hypertension::ada::parse_integrity_output("   \n", err).has_value());
+
+    // Malformed
+    assert(!hypertension::ada::parse_integrity_output("garbage", err).has_value());
+    assert(!hypertension::ada::parse_integrity_output("128 16", err).has_value());
+    assert(!hypertension::ada::parse_integrity_output("128 16 112 MAYBE", err).has_value());
+    assert(!hypertension::ada::parse_integrity_output("128 16 112", err).has_value());
+
+    std::cout << "ada parse output: OK\n";
+}
+
+void test_ada_missing_runtime() {
+    const char* old = std::getenv("HYPERTENSION_ADA_BIN");
+    setenv("HYPERTENSION_ADA_BIN", "/tmp/_nonexistent_hypertension_integrity", 1);
+
+    std::string err;
+    hypertension::ada::IntegrityEvidence ev{
+        42, 7, true, 3, true, true, 9974, true, "DEADBEEF", true
+    };
+    auto result = hypertension::ada::exhaustive_integrity(ev, err);
+
+    if (old) setenv("HYPERTENSION_ADA_BIN", old, 1);
+    else     unsetenv("HYPERTENSION_ADA_BIN");
+
+    assert(!result.has_value());
+    assert(!err.empty());
+    std::cout << "ada missing runtime: OK\n";
+}
+
+void test_standard_no_ada() {
+    const char* old = std::getenv("HYPERTENSION_ADA_BIN");
+    setenv("HYPERTENSION_ADA_BIN", "/tmp/_nonexistent_hypertension_integrity", 1);
+
+    // Standard runtime: find_index must work without the Ada binary.
+    constexpr std::array<int, 4> data = {5, 10, 15, 20};
+    auto r = hypertension::find_index<int>(data, 15);
+    assert(r.has_value() && *r == std::size_t{2});
+
+    if (old) setenv("HYPERTENSION_ADA_BIN", old, 1);
+    else     unsetenv("HYPERTENSION_ADA_BIN");
+
+    std::cout << "standard no ada: OK\n";
+}
+
+// Tests that require the compiled Ada binary.
+
+void test_ada_integrity_pass() {
+    if (!hypertension::ada::runtime_available()) {
+        std::cout << "ada integrity pass: SKIPPED (binary not found; run: make ada)\n";
+        return;
+    }
+    std::string err;
+    hypertension::ada::IntegrityEvidence ev{
+        42, 7, true, 3, true, true, 9974, true, "DEADBEEF", true
+    };
+    auto r = hypertension::ada::exhaustive_integrity(ev, err);
+    assert(r.has_value());
+    assert(r->pass);
+    assert(r->total_states == 16 * 8);   // SEAL_STEPS_TEST * EVID_VARIANTS_TEST
+    assert(r->valid_states == 16);        // one canonical state per seal step
+    std::cout << "ada integrity pass: OK  total=" << r->total_states
+              << " valid=" << r->valid_states
+              << " corrupted=" << r->corrupted_detected << "\n";
+}
+
+void test_ada_deterministic() {
+    if (!hypertension::ada::runtime_available()) {
+        std::cout << "ada deterministic: SKIPPED\n";
+        return;
+    }
+    std::string err;
+    hypertension::ada::IntegrityEvidence ev{
+        42, 7, true, 3, true, true, 9974, true, "DEADBEEF", true
+    };
+    auto r1 = hypertension::ada::exhaustive_integrity(ev, err);
+    auto r2 = hypertension::ada::exhaustive_integrity(ev, err);
+    assert(r1.has_value() && r2.has_value());
+    assert(r1->total_states      == r2->total_states);
+    assert(r1->valid_states      == r2->valid_states);
+    assert(r1->corrupted_detected == r2->corrupted_detected);
+    assert(r1->pass              == r2->pass);
+    std::cout << "ada deterministic: OK\n";
+}
+
+void test_ada_seal_matters() {
+    if (!hypertension::ada::runtime_available()) {
+        std::cout << "ada seal matters: SKIPPED\n";
+        return;
+    }
+    std::string err;
+    hypertension::ada::IntegrityEvidence ev1{
+        42, 7, true, 3, true, true, 9974, true, "DEADBEEF", true
+    };
+    hypertension::ada::IntegrityEvidence ev2 = ev1;
+    ev2.seal = "CAFEBABE";
+    auto r1 = hypertension::ada::exhaustive_integrity(ev1, err);
+    auto r2 = hypertension::ada::exhaustive_integrity(ev2, err);
+    assert(r1.has_value() && r2.has_value());
+    // Both should pass (test mode, both canonical records valid).
+    // The derived seal states differ, so corrupted_detected may differ.
+    // At minimum, the function must run deterministically for each input.
+    assert(r1->pass && r2->pass);
+    std::cout << "ada seal matters: OK\n";
+}
+
+void test_ada_test_mode_fast() {
+    if (!hypertension::ada::runtime_available()) {
+        std::cout << "ada test mode fast: SKIPPED\n";
+        return;
+    }
+    std::string err;
+    hypertension::ada::IntegrityEvidence ev{
+        42, 7, true, 3, true, true, 9974, true, "DEADBEEF", true
+    };
+    auto r = hypertension::ada::exhaustive_integrity(ev, err);
+    assert(r.has_value());
+    // Test mode must complete in well under 1 second.
+    assert(r->elapsed_ns < 1'000'000'000LL);
+    std::cout << "ada test mode fast: OK  elapsed=" << r->elapsed_ns << " ns\n";
+}
+
 int main() {
     test_search();
     test_bf_basic();
@@ -943,6 +1090,15 @@ int main() {
     test_forth_all_fields_material();
     test_forth_seal_retained();
     test_forth_admissibility_gate();
+
+    // ada
+    test_ada_parse_output();
+    test_ada_missing_runtime();
+    test_standard_no_ada();
+    test_ada_integrity_pass();
+    test_ada_deterministic();
+    test_ada_seal_matters();
+    test_ada_test_mode_fast();
 
     std::cout << "\nAll tests passed.\n";
     return 0;

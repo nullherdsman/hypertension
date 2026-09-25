@@ -10,7 +10,9 @@ add_executable(hypertension
     src/cli/cli.cpp
     src/runtime/mode.cpp
     src/forth/forth.cpp
+    src/ada/ada.cpp
 )
 
 target_include_directories(hypertension PRIVATE src)
 target_compile_options(hypertension PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(hypertension PRIVATE pthread)

@@ -1,4 +1,5 @@
 #include "achievements/achievements.hpp"
+#include "ada/ada.hpp"
 #include "algol/algol.hpp"
 #include "cli/cli.hpp"
 #include "forth/forth.hpp"
@@ -198,13 +199,49 @@ int run_extended_search(int value) {
     }
 
     std::cout << "\xe2\x9c\x93 Record finalization          Forth           "
-              << hypertension::format_time(seal_result->elapsed_ns) << "\n\n";
+              << hypertension::format_time(seal_result->elapsed_ns) << "\n";
+
+    // Ask Ada.
+    hypertension::ada::IntegrityEvidence ada_ev{
+        value,
+        static_cast<int>(DATASET.size()),
+        cpp_result.has_value(),
+        cpp_result ? static_cast<int>(*cpp_result) : -1,
+        *bloom_result,
+        true,
+        static_cast<int>(std::lround(conf_result->confidence * 100.0)),
+        true,
+        seal_result->seal,
+        false
+    };
+
+    std::string ada_error;
+    auto ada_result = hypertension::ada::exhaustive_integrity(ada_ev, ada_error);
+
+    if (!ada_result.has_value()) {
+        std::cout << "\xe2\x9c\x97 Exhaustive integrity          Ada\n\n"
+                  << "Verification incomplete.\n\n"
+                  << "The integrity state space could not be examined.\n";
+        return 2;
+    }
+
+    if (!ada_result->pass) {
+        std::cout << "\xe2\x9c\x97 Exhaustive integrity          Ada             "
+                  << hypertension::format_time(ada_result->elapsed_ns) << "\n\n"
+                  << "Integrity verification failed.\n\n"
+                  << "The exhaustive state space examination detected an anomaly.\n";
+        return 2;
+    }
+
+    std::cout << "\xe2\x9c\x93 Exhaustive integrity          Ada             "
+              << hypertension::format_time(ada_result->elapsed_ns) << "\n\n";
 
     std::cout << "Consensus established.\n"
               << "Verification confidence: "
               << std::format("{:.2f}", conf_result->confidence) << "%\n"
               << "Evidence logically admissible.\n"
-              << "Verification record sealed.\n\n";
+              << "Verification record sealed.\n"
+              << "Exhaustive integrity confirmed.\n\n";
 
     if (cpp_result) {
         if (!hypertension::achievements::is_unlocked(hypertension::achievements::MATHEMATICALLY_CORRECT)) {
