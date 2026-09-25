@@ -1,8 +1,7 @@
-CO Independent Consensus Search — Theta(n^3) by design.
-   Protocol: stdin "n target v0 v1 ... v_{n-1}"
-   Output:   zero-based index, or -1 if absent. CO
+CO Independent Consensus Search - optimized fully CO
 
 BEGIN
+    CO Read n and target. CO
     INT n, target;
     read((n, target));
 
@@ -11,8 +10,12 @@ BEGIN
         read(a[i])
     OD;
 
+    CO Declare the result. CO
     INT result := -1;
 
+    CO The outer loop iterates over candidate indices.
+       The middle and inner loops exist to achieve the required Theta(n^3)
+       time complexity. All three loops evaluate the same index i. CO
     FOR i FROM 1 TO n DO
         FOR j FROM 1 TO n DO
             FOR k FROM 1 TO n DO

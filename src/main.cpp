@@ -3,6 +3,7 @@
 #include "cli/cli.hpp"
 #include "fortran/fortran.hpp"
 #include "math/bloom.hpp"
+#include "prolog/prolog.hpp"
 #include "runtime/mode.hpp"
 #include "search/search.hpp"
 #include "util/timing.hpp"
@@ -78,12 +79,12 @@ int run_extended_search(int value) {
                  "\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80"
                  "\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\n\n";
 
-    // Stage 1: C++ O(n) primary search
+    // Search.
     hypertension::Timer cpp_timer;
     auto cpp_result = hypertension::find_index<int>(DATASET, value);
     auto cpp_ns = cpp_timer.elapsed_ns();
 
-    // Stage 2: Brainfuck probabilistic membership
+    // Mathematics.
     std::string bf_error;
     hypertension::Timer bf_timer;
     auto bloom_result = hypertension::math::verify_membership(value, bf_error);
@@ -94,11 +95,10 @@ int run_extended_search(int value) {
         return 2;
     }
 
-    // Stage 3: ALGOL 68 Theta(n^3) independent consensus search
+    // Again.
     std::string algol_error;
     auto algol_result = hypertension::algol::consensus_search(DATASET, value, algol_error);
 
-    // Print timing table
     std::cout << "\xe2\x9c\x93 Primary search                C++23       "
               << hypertension::format_time(cpp_ns) << "\n";
     std::cout << "\xe2\x9c\x93 Membership verification      Brainfuck    "
@@ -113,14 +113,13 @@ int run_extended_search(int value) {
     std::cout << "\xe2\x9c\x93 Independent consensus        ALGOL 68      "
               << hypertension::format_time(algol_result->elapsed_ns) << "\n";
 
-    // Consensus check: C++ and ALGOL must agree
+    // Consensus check: C++ and ALGOL must agree.
     if (!hypertension::algol::consensus_agrees(cpp_result, *algol_result)) {
         std::cout << "Verification failed.\n\n"
                   << "Primary and independent search results disagree.\n";
         return 2;
     }
 
-    // Stage 4: FORTRAN 77 statistical confidence authority
     hypertension::fortran::ConfidenceEvidence evidence{
         static_cast<int>(DATASET.size()),
         cpp_result.has_value(),
@@ -140,11 +139,41 @@ int run_extended_search(int value) {
     }
 
     std::cout << "\xe2\x9c\x93 Statistical confidence       FORTRAN 77    "
-              << hypertension::format_time(conf_result->elapsed_ns) << "\n\n";
+              << hypertension::format_time(conf_result->elapsed_ns) << "\n";
+
+    // Ask Prolog.
+    hypertension::prolog::AdmissibilityEvidence pl_ev{
+        cpp_result.has_value(),
+        cpp_result ? static_cast<int>(*cpp_result) : -1,
+        *bloom_result,
+        algol_result->index.has_value(),
+        algol_result->index.value_or(-1),
+        conf_result->confidence
+    };
+
+    std::string prolog_error;
+    auto pl_result = hypertension::prolog::logical_admissibility(pl_ev, prolog_error);
+
+    if (!pl_result.has_value()) {
+        std::cout << "\nProlog admissibility authority unavailable.\n\n"
+                  << "Required: swipl (SWI-Prolog)\n";
+        return 2;
+    }
+
+    const char* pl_mark = pl_result->admissible ? "\xe2\x9c\x93" : "\xe2\x9c\x97";
+    std::cout << pl_mark << " Logical admissibility        Prolog         "
+              << hypertension::format_time(pl_result->elapsed_ns) << "\n\n";
+
+    if (!pl_result->admissible) {
+        std::cout << "Verification rejected.\n\n"
+                  << "The available evidence does not logically permit this result.\n";
+        return 2;
+    }
 
     std::cout << "Consensus established.\n"
               << "Verification confidence: "
-              << std::format("{:.2f}", conf_result->confidence) << "%\n\n";
+              << std::format("{:.2f}", conf_result->confidence) << "%\n"
+              << "Evidence logically admissible.\n\n";
 
     if (cpp_result) {
         if (!hypertension::achievements::is_unlocked(hypertension::achievements::MATHEMATICALLY_CORRECT)) {

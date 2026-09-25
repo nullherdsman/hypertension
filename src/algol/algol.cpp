@@ -88,6 +88,7 @@ SubprocResult invoke_a68g(const std::string& source, const std::string& stdin_da
 } // namespace
 
 bool runtime_available() {
+    // Check for a68g.
     FILE* f = popen("command -v a68g >/dev/null 2>&1 && echo y", "r");
     if (!f) return false;
     char c = '\0';

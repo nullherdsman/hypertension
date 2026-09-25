@@ -12,6 +12,7 @@ namespace {
 
 [[noreturn]] void usage_error(std::string_view msg) {
     std::cerr << "error: " << msg << "\n\nRun 'hypertension --help' for usage.\n";
+    // Exit.
     std::exit(2);
 }
 
@@ -35,6 +36,9 @@ auto parse(int argc, char* argv[]) -> Command {
         try {
             std::size_t pos{};
             value = std::stoi(std::string(raw), &pos);
+            // If pos does not equal raw.size(), the string contains trailing
+            // non-numeric characters (e.g., "42abc") and must be rejected.
+            // std::stoi alone does not detect this condition.
             if (pos != raw.size()) throw std::invalid_argument{""};
         } catch (...) {
             usage_error("expected an integer");

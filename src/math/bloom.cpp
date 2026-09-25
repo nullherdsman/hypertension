@@ -17,6 +17,10 @@ constexpr uint16_t BLOOM_BITS = 0x74E1u;
 auto bloom_check(std::string_view bf_program, int value, std::string& error)
     -> std::optional<bool>
 {
+    // Truncate to 8 bits. Values outside [0, 255] cannot be members of the
+    // dataset (all seven elements fit in a byte), but the caller may pass
+    // arbitrary signed integers. Masking with 0xFF ensures the hash function
+    // receives a well-defined input byte regardless of signedness or width.
     uint8_t input_byte = static_cast<uint8_t>(value & 0xFF);
     auto result = bf::run(bf_program, std::span<const uint8_t>{&input_byte, 1});
 

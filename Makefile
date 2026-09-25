@@ -11,7 +11,8 @@ SRCS = \
     src/math/bloom.cpp \
     src/achievements/achievements.cpp \
     src/algol/algol.cpp \
-    src/fortran/fortran.cpp
+    src/fortran/fortran.cpp \
+    src/prolog/prolog.cpp
 
 TEST_SRCS = \
     tests/test_main.cpp \
@@ -19,7 +20,8 @@ TEST_SRCS = \
     src/math/bloom.cpp \
     src/achievements/achievements.cpp \
     src/algol/algol.cpp \
-    src/fortran/fortran.cpp
+    src/fortran/fortran.cpp \
+    src/prolog/prolog.cpp
 
 TARGET         = build/hypertension
 TEST_TARGET    = build/test_main

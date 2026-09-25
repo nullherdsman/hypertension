@@ -16,6 +16,7 @@ auto state_path() -> std::filesystem::path {
 } // namespace
 
 auto load_runtime_mode() -> RuntimeMode {
+    // Open the file.
     std::ifstream f(state_path());
     if (!f) return RuntimeMode::Standard;
     std::string val;
@@ -23,6 +24,10 @@ auto load_runtime_mode() -> RuntimeMode {
     return (val == "extended") ? RuntimeMode::Extended : RuntimeMode::Standard;
 }
 
+// The state file contains exactly one line: the string "extended" or
+// "standard", followed by a newline. Any value other than "extended"
+// is treated as Standard mode. The file is never locked; concurrent
+// writes are not supported and must not occur.
 void save_runtime_mode(RuntimeMode mode) {
     auto path = state_path();
     std::filesystem::create_directories(path.parent_path());

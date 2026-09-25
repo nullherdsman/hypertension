@@ -148,6 +148,7 @@ auto statistical_confidence(const ConfidenceEvidence& ev, std::string& error)
         std::to_string(ev.cpp_index)               + " " +
         std::to_string(ev.algol_index)             + "\n";
 
+    // Calculate confidence.
     Timer timer;
     auto sub = invoke_binary(binary.string(), input);
     long long ns = timer.elapsed_ns();

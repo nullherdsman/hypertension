@@ -3,6 +3,7 @@
 #include "../src/brainfuck/brainfuck.hpp"
 #include "../src/fortran/fortran.hpp"
 #include "../src/math/bloom.hpp"
+#include "../src/prolog/prolog.hpp"
 #include "../src/search/search.hpp"
 #include "../src/util/data_dir.hpp"
 
@@ -463,6 +464,173 @@ void test_standard_no_fortran() {
     std::cout << "standard no fortran: OK\n";
 }
 
+// --- prolog parse ---
+
+void test_prolog_parse_output() {
+    std::string err;
+
+    auto yes = hypertension::prolog::parse_prolog_output("admissible\n", err);
+    assert(yes.has_value() && *yes == true);
+
+    auto no = hypertension::prolog::parse_prolog_output("inadmissible\n", err);
+    assert(no.has_value() && *no == false);
+
+    // Whitespace trimming
+    auto ws = hypertension::prolog::parse_prolog_output("  admissible  \n", err);
+    assert(ws.has_value() && *ws == true);
+
+    // Malformed → fail closed
+    assert(!hypertension::prolog::parse_prolog_output("", err).has_value());
+    assert(!hypertension::prolog::parse_prolog_output("   \n", err).has_value());
+    assert(!hypertension::prolog::parse_prolog_output("garbage", err).has_value());
+    assert(!hypertension::prolog::parse_prolog_output("admissible inadmissible", err).has_value());
+    assert(!hypertension::prolog::parse_prolog_output("ADMISSIBLE", err).has_value());
+
+    std::cout << "prolog parse output: OK\n";
+}
+
+void test_prolog_missing_runtime() {
+    const char* old_path = getenv("PATH");
+    setenv("PATH", "/tmp/_nonexistent_ht_path", 1);
+
+    std::string err;
+    hypertension::prolog::AdmissibilityEvidence ev{true, 3, true, true, 3, 99.74};
+    auto result = hypertension::prolog::logical_admissibility(ev, err);
+
+    if (old_path) setenv("PATH", old_path, 1);
+    else          unsetenv("PATH");
+
+    assert(!result.has_value());
+    assert(!err.empty());
+    std::cout << "prolog missing runtime: OK\n";
+}
+
+void test_standard_no_prolog() {
+    const char* old_path = getenv("PATH");
+    setenv("PATH", "/tmp/_nonexistent_ht_path", 1);
+
+    // Standard runtime: find_index must work without swipl.
+    constexpr std::array<int, 4> data = {5, 10, 15, 20};
+    auto r = hypertension::find_index<int>(data, 10);
+    assert(r.has_value() && *r == std::size_t{1});
+
+    if (old_path) setenv("PATH", old_path, 1);
+    else          unsetenv("PATH");
+
+    std::cout << "standard no prolog: OK\n";
+}
+
+// --- prolog tests that require swipl ---
+
+void test_prolog_present_admissible() {
+    if (!hypertension::prolog::runtime_available()) {
+        std::cout << "prolog present admissible: SKIPPED (swipl not available)\n";
+        return;
+    }
+    std::string err;
+    // C++ found 3, BF positive, ALGOL found 3, confidence high
+    hypertension::prolog::AdmissibilityEvidence ev{true, 3, true, true, 3, 99.74};
+    auto r = hypertension::prolog::logical_admissibility(ev, err);
+    assert(r.has_value() && r->admissible);
+    std::cout << "prolog present admissible: OK\n";
+}
+
+void test_prolog_absent_admissible() {
+    if (!hypertension::prolog::runtime_available()) {
+        std::cout << "prolog absent admissible: SKIPPED (swipl not available)\n";
+        return;
+    }
+    std::string err;
+    // Neither found, BF negative, high confidence
+    hypertension::prolog::AdmissibilityEvidence ev{false, -1, false, false, -1, 99.74};
+    auto r = hypertension::prolog::logical_admissibility(ev, err);
+    assert(r.has_value() && r->admissible);
+    std::cout << "prolog absent admissible: OK\n";
+}
+
+void test_prolog_bloom_false_positive_admissible() {
+    if (!hypertension::prolog::runtime_available()) {
+        std::cout << "prolog bloom false positive admissible: SKIPPED (swipl not available)\n";
+        return;
+    }
+    std::string err;
+    // Both absent, but BF positive (Bloom false positive) — still admissible
+    hypertension::prolog::AdmissibilityEvidence ev{false, -1, true, false, -1, 98.53};
+    auto r = hypertension::prolog::logical_admissibility(ev, err);
+    assert(r.has_value() && r->admissible);
+    std::cout << "prolog bloom false positive admissible: OK\n";
+}
+
+void test_prolog_index_disagreement_inadmissible() {
+    if (!hypertension::prolog::runtime_available()) {
+        std::cout << "prolog index disagreement inadmissible: SKIPPED (swipl not available)\n";
+        return;
+    }
+    std::string err;
+    // C++ says index 3, ALGOL says index 4
+    hypertension::prolog::AdmissibilityEvidence ev{true, 3, true, true, 4, 99.74};
+    auto r = hypertension::prolog::logical_admissibility(ev, err);
+    assert(r.has_value() && !r->admissible);
+    std::cout << "prolog index disagreement inadmissible: OK\n";
+}
+
+void test_prolog_bf_false_negative_inadmissible() {
+    if (!hypertension::prolog::runtime_available()) {
+        std::cout << "prolog bf false negative inadmissible: SKIPPED (swipl not available)\n";
+        return;
+    }
+    std::string err;
+    // C++ and ALGOL agree on index 3 but BF says negative — impossible (no false negatives)
+    hypertension::prolog::AdmissibilityEvidence ev{true, 3, false, true, 3, 99.74};
+    auto r = hypertension::prolog::logical_admissibility(ev, err);
+    assert(r.has_value() && !r->admissible);
+    std::cout << "prolog bf false negative inadmissible: OK\n";
+}
+
+void test_prolog_low_confidence_inadmissible() {
+    if (!hypertension::prolog::runtime_available()) {
+        std::cout << "prolog low confidence inadmissible: SKIPPED (swipl not available)\n";
+        return;
+    }
+    std::string err;
+    hypertension::prolog::AdmissibilityEvidence ev{true, 3, true, true, 3, 50.0};
+    auto r = hypertension::prolog::logical_admissibility(ev, err);
+    assert(r.has_value() && !r->admissible);
+    std::cout << "prolog low confidence inadmissible: OK\n";
+}
+
+void test_prolog_confidence_at_threshold_admissible() {
+    if (!hypertension::prolog::runtime_available()) {
+        std::cout << "prolog confidence at threshold: SKIPPED (swipl not available)\n";
+        return;
+    }
+    std::string err;
+    // Exactly at threshold (95.0) → admissible (>=)
+    hypertension::prolog::AdmissibilityEvidence ev{true, 3, true, true, 3, 95.0};
+    auto r = hypertension::prolog::logical_admissibility(ev, err);
+    assert(r.has_value() && r->admissible);
+    // Just below threshold → inadmissible
+    hypertension::prolog::AdmissibilityEvidence ev2{true, 3, true, true, 3, 94.9999};
+    auto r2 = hypertension::prolog::logical_admissibility(ev2, err);
+    assert(r2.has_value() && !r2->admissible);
+    std::cout << "prolog confidence at threshold: OK\n";
+}
+
+void test_prolog_genuine_participation() {
+    if (!hypertension::prolog::runtime_available()) {
+        std::cout << "prolog genuine participation: SKIPPED (swipl not available)\n";
+        return;
+    }
+    std::string err;
+    // C++ and ALGOL agree (consensus passes) but BF says negative — Prolog rejects.
+    // This is a case that previous stages do not catch: consensus_agrees() would pass,
+    // FORTRAN would compute confidence, but Prolog's no_false_negative_contradiction rejects it.
+    hypertension::prolog::AdmissibilityEvidence ev{true, 3, false, true, 3, 99.74};
+    auto r = hypertension::prolog::logical_admissibility(ev, err);
+    assert(r.has_value() && !r->admissible);
+    std::cout << "prolog genuine participation: OK\n";
+}
+
 int main() {
     test_search();
     test_bf_basic();
@@ -493,6 +661,19 @@ int main() {
     test_fortran_range();
     test_algol_disagreement_before_fortran();
     test_standard_no_fortran();
+
+    // prolog
+    test_prolog_parse_output();
+    test_prolog_missing_runtime();
+    test_standard_no_prolog();
+    test_prolog_present_admissible();
+    test_prolog_absent_admissible();
+    test_prolog_bloom_false_positive_admissible();
+    test_prolog_index_disagreement_inadmissible();
+    test_prolog_bf_false_negative_inadmissible();
+    test_prolog_low_confidence_inadmissible();
+    test_prolog_confidence_at_threshold_admissible();
+    test_prolog_genuine_participation();
 
     std::cout << "\nAll tests passed.\n";
     return 0;
