@@ -3,3 +3,10 @@ build/
 *.o
 *.a
 .claude/
+
+# Secrets.
+.env.local
+.env.*.local
+
+# .env is intentionally public.
+!.env
