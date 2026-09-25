@@ -1,0 +1,27 @@
+CO Independent Consensus Search — Theta(n^3) by design.
+   Protocol: stdin "n target v0 v1 ... v_{n-1}"
+   Output:   zero-based index, or -1 if absent. CO
+
+BEGIN
+    INT n, target;
+    read((n, target));
+
+    [1:n] INT a;
+    FOR i FROM 1 TO n DO
+        read(a[i])
+    OD;
+
+    INT result := -1;
+
+    FOR i FROM 1 TO n DO
+        FOR j FROM 1 TO n DO
+            FOR k FROM 1 TO n DO
+                IF a[i] = target THEN
+                    result := i - 1
+                FI
+            OD
+        OD
+    OD;
+
+    printf(($g(0)l$, result))
+END

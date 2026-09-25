@@ -1,4 +1,5 @@
 #include "achievements/achievements.hpp"
+#include "algol/algol.hpp"
 #include "cli/cli.hpp"
 #include "math/bloom.hpp"
 #include "runtime/mode.hpp"
@@ -68,52 +69,72 @@ int run_standard_search(int value, bool verified) {
 
 int run_extended_search(int value) {
     std::cout << "HyperTension Extended Runtime\n"
-              << "─────────────"
-                 "─────────────"
-                 "───\n\n";
+              << "\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80"
+                 "\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80"
+                 "\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80"
+                 "\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80"
+                 "\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80"
+                 "\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\n\n";
 
-    hypertension::Timer timer;
-    auto result = hypertension::find_index<int>(DATASET, value);
-    auto ns = timer.elapsed_ns();
+    // Stage 1: C++ O(n) primary search
+    hypertension::Timer cpp_timer;
+    auto cpp_result = hypertension::find_index<int>(DATASET, value);
+    auto cpp_ns = cpp_timer.elapsed_ns();
 
-    std::string error;
-    auto bloom_result = hypertension::math::verify_membership(value, error);
+    // Stage 2: Brainfuck probabilistic membership
+    std::string bf_error;
+    hypertension::Timer bf_timer;
+    auto bloom_result = hypertension::math::verify_membership(value, bf_error);
+    auto bf_ns = bf_timer.elapsed_ns();
 
     if (!bloom_result.has_value()) {
-        std::cerr << "error: Brainfuck membership filter failed: " << error << '\n';
+        std::cerr << "error: Brainfuck membership filter failed: " << bf_error << '\n';
         return 2;
     }
 
-    std::cout << "✓ C++ linear search: ";
-    if (result)
-        std::cout << value << " at index " << *result << " (" << ns << " ns)\n";
-    else
-        std::cout << "not found (" << ns << " ns)\n";
+    // Stage 3: ALGOL 68 Theta(n^3) independent consensus search
+    std::string algol_error;
+    auto algol_result = hypertension::algol::consensus_search(DATASET, value, algol_error);
 
-    std::cout << "✓ Brainfuck membership filter: "
-              << (*bloom_result ? "confirmed" : "not a member") << "\n\n";
+    // Print timing table
+    std::cout << "\xe2\x9c\x93 Primary search                C++23       "
+              << hypertension::format_time(cpp_ns) << "\n";
+    std::cout << "\xe2\x9c\x93 Membership verification      Brainfuck    "
+              << hypertension::format_time(bf_ns) << "\n";
 
-    bool confirmed = result.has_value() && *bloom_result;
+    if (!algol_result.has_value()) {
+        std::cout << "\nALGOL 68 consensus engine unavailable.\n\n"
+                  << "Required runtime: a68g\n";
+        return 2;
+    }
 
-    if (confirmed) {
-        std::cout << "Verification confidence: 76%\n\n";
+    std::cout << "\xe2\x9c\x93 Independent consensus        ALGOL 68      "
+              << hypertension::format_time(algol_result->elapsed_ns) << "\n\n";
 
+    // Consensus check: C++ and ALGOL must agree
+    if (!hypertension::algol::consensus_agrees(cpp_result, *algol_result)) {
+        std::cout << "Verification failed.\n\n"
+                  << "Primary and independent search results disagree.\n";
+        return 2;
+    }
+
+    // Bloom is probabilistic: can false-positive but not false-negative for members.
+    // A present value that passes C++/ALGOL consensus is verified regardless of Bloom.
+    std::cout << "Consensus established.\n\n";
+
+    if (cpp_result) {
         if (!hypertension::achievements::is_unlocked(hypertension::achievements::MATHEMATICALLY_CORRECT)) {
             hypertension::achievements::unlock(hypertension::achievements::MATHEMATICALLY_CORRECT);
             std::cout << "ACHIEVEMENT UNLOCKED\n\n"
                       << hypertension::achievements::MATHEMATICALLY_CORRECT.title << "\n\n"
                       << hypertension::achievements::MATHEMATICALLY_CORRECT.description << "\n\n";
         }
-
-        std::cout << "RULE 2\n\n"
-                  << "Two implementations agreeing is not consensus.\n\n"
-                  << "A third implementation is required.\n\n";
+        std::cout << "Verified result: index " << *cpp_result << "\n";
     } else {
-        std::cout << value << (result ? " found but membership filter inconclusive."
-                                      : " not in dataset.") << "\n";
+        std::cout << value << " verified absent.\n";
     }
 
-    return result ? 0 : 1;
+    return cpp_result ? 0 : 1;
 }
 
 int run_search(int value, bool verified) {

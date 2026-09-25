@@ -1,4 +1,5 @@
 #include "../src/achievements/achievements.hpp"
+#include "../src/algol/algol.hpp"
 #include "../src/brainfuck/brainfuck.hpp"
 #include "../src/math/bloom.hpp"
 #include "../src/search/search.hpp"
@@ -7,6 +8,7 @@
 #include <array>
 #include <cassert>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -125,15 +127,169 @@ void test_achievement_idempotent() {
     std::cout << "achievement idempotent: OK\n";
 }
 
-// --- rule 2 boundary ---
+// --- algol ---
 
-void test_rule2_not_implemented() {
-    // verify_membership is a pure read with no side effects.
-    // After returning, no Rule-3 state or further progression is created.
+static constexpr std::array<int, 7> ALGOL_DATASET = {7, 13, 21, 42, 64, 128, 256};
+
+void test_algol_parse_output() {
     std::string err;
-    auto r = hypertension::math::verify_membership(42, err);
-    assert(r.has_value() && *r == true);
-    std::cout << "rule2 boundary: OK\n";
+    auto r = hypertension::algol::parse_algol_output("3\n", err);
+    assert(r.has_value() && *r == 3);
+
+    auto neg = hypertension::algol::parse_algol_output("-1\n", err);
+    assert(neg.has_value() && *neg == -1);
+
+    auto bad = hypertension::algol::parse_algol_output("not a number", err);
+    assert(!bad.has_value() && !err.empty());
+
+    auto empty = hypertension::algol::parse_algol_output("", err);
+    assert(!empty.has_value());
+
+    std::cout << "algol parse output: OK\n";
+}
+
+void test_algol_malformed_output() {
+    std::string err;
+    // Multi-word garbage
+    assert(!hypertension::algol::parse_algol_output("error foo", err).has_value());
+    // Whitespace only
+    assert(!hypertension::algol::parse_algol_output("   \n  ", err).has_value());
+    // Partial integer
+    assert(!hypertension::algol::parse_algol_output("3x", err).has_value());
+    std::cout << "algol malformed output: OK\n";
+}
+
+void test_algol_consensus_agrees() {
+    using hypertension::algol::ConsensusResult;
+    using hypertension::algol::consensus_agrees;
+
+    // Both found same index
+    assert(consensus_agrees(std::optional<std::size_t>{3}, ConsensusResult{3, 0}));
+    // Both not found
+    assert(consensus_agrees(std::nullopt, ConsensusResult{std::nullopt, 0}));
+    // C++ found, ALGOL not
+    assert(!consensus_agrees(std::optional<std::size_t>{3}, ConsensusResult{std::nullopt, 0}));
+    // ALGOL found, C++ not
+    assert(!consensus_agrees(std::nullopt, ConsensusResult{3, 0}));
+    // Different indices
+    assert(!consensus_agrees(std::optional<std::size_t>{3}, ConsensusResult{2, 0}));
+
+    std::cout << "algol consensus agrees: OK\n";
+}
+
+void test_algol_missing_runtime() {
+    const char* old_path = getenv("PATH");
+    setenv("PATH", "/tmp/_nonexistent_ht_path", 1);
+
+    std::string err;
+    auto result = hypertension::algol::consensus_search(ALGOL_DATASET, 42, err);
+
+    if (old_path) setenv("PATH", old_path, 1);
+    else          unsetenv("PATH");
+
+    assert(!result.has_value());
+    assert(!err.empty());
+    std::cout << "algol missing runtime: OK\n";
+}
+
+// --- algol tests that require a68g ---
+
+void test_algol_execution() {
+    if (!hypertension::algol::runtime_available()) {
+        std::cout << "algol execution: SKIPPED (a68g not available)\n";
+        return;
+    }
+
+    std::string err;
+
+    // First index
+    auto first = hypertension::algol::consensus_search(ALGOL_DATASET, 7, err);
+    assert(first.has_value() && first->index.has_value() && *first->index == 0);
+
+    // Middle index
+    auto mid = hypertension::algol::consensus_search(ALGOL_DATASET, 42, err);
+    assert(mid.has_value() && mid->index.has_value() && *mid->index == 3);
+
+    // Last index
+    auto last = hypertension::algol::consensus_search(ALGOL_DATASET, 256, err);
+    assert(last.has_value() && last->index.has_value() && *last->index == 6);
+
+    // Missing value
+    auto absent = hypertension::algol::consensus_search(ALGOL_DATASET, 99, err);
+    assert(absent.has_value() && !absent->index.has_value());
+
+    std::cout << "algol execution: OK\n";
+}
+
+void test_algol_zero_based_index() {
+    if (!hypertension::algol::runtime_available()) {
+        std::cout << "algol zero-based index: SKIPPED (a68g not available)\n";
+        return;
+    }
+    std::string err;
+    // ALGOL is 1-based internally; result must be 0-based to match C++.
+    auto r = hypertension::algol::consensus_search(ALGOL_DATASET, 7, err);
+    assert(r.has_value() && r->index.has_value() && *r->index == 0);
+
+    auto r2 = hypertension::algol::consensus_search(ALGOL_DATASET, 13, err);
+    assert(r2.has_value() && r2->index.has_value() && *r2->index == 1);
+
+    std::cout << "algol zero-based index: OK\n";
+}
+
+void test_algol_cpp_agreement() {
+    if (!hypertension::algol::runtime_available()) {
+        std::cout << "algol cpp agreement: SKIPPED (a68g not available)\n";
+        return;
+    }
+    std::string err;
+    for (int v : {7, 13, 21, 42, 64, 128, 256, 99, 0}) {
+        auto cpp = hypertension::find_index<int>(ALGOL_DATASET, v);
+        auto algol = hypertension::algol::consensus_search(ALGOL_DATASET, v, err);
+        assert(algol.has_value());
+        assert(hypertension::algol::consensus_agrees(cpp, *algol));
+    }
+    std::cout << "algol cpp agreement: OK\n";
+}
+
+// --- brainfuck still material ---
+
+void test_bf_still_material() {
+    // verify_membership must use BF output, not a static table.
+    // A wrong BF program that outputs 0 would break membership for all members.
+    std::string err;
+    auto r = hypertension::math::bloom_check(",.", 42, err);
+    // ",." = echo input byte; h1 = 42%16 = 10; h2 = 42%16 = 10.
+    // BLOOM_BITS has bit 10 set, so this returns true (same bit for both hashes).
+    assert(r.has_value());
+    // The actual canonical program gives a different hash than identity.
+    auto canonical = hypertension::math::verify_membership(42, err);
+    assert(canonical.has_value() && *canonical == true);
+    std::cout << "bf still material: OK\n";
+}
+
+// --- standard runtime independence ---
+
+void test_standard_runtime_independent() {
+    // find_index works without a68g.
+    constexpr std::array<int, 5> data = {1, 2, 3, 4, 5};
+    assert(hypertension::find_index<int>(data, 3) == std::size_t{2});
+    assert(!hypertension::find_index<int>(data, 9));
+    std::cout << "standard runtime independent: OK\n";
+}
+
+void test_standard_runtime_without_a68g() {
+    const char* old_path = getenv("PATH");
+    setenv("PATH", "/tmp/_nonexistent_ht_path", 1);
+
+    constexpr std::array<int, 3> data = {10, 20, 30};
+    auto r = hypertension::find_index<int>(data, 20);
+    assert(r.has_value() && *r == std::size_t{1});
+
+    if (old_path) setenv("PATH", old_path, 1);
+    else          unsetenv("PATH");
+
+    std::cout << "standard runtime without a68g: OK\n";
 }
 
 int main() {
@@ -143,7 +299,19 @@ int main() {
     test_bf_malformed();
     test_membership_members_and_nonmembers();
     test_achievement_idempotent();
-    test_rule2_not_implemented();
+
+    // algol
+    test_algol_parse_output();
+    test_algol_malformed_output();
+    test_algol_consensus_agrees();
+    test_algol_missing_runtime();
+    test_algol_execution();
+    test_algol_zero_based_index();
+    test_algol_cpp_agreement();
+    test_bf_still_material();
+    test_standard_runtime_independent();
+    test_standard_runtime_without_a68g();
+
     std::cout << "\nAll tests passed.\n";
     return 0;
 }

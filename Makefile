@@ -7,13 +7,15 @@ SRCS = \
     src/runtime/mode.cpp \
     src/brainfuck/brainfuck.cpp \
     src/math/bloom.cpp \
-    src/achievements/achievements.cpp
+    src/achievements/achievements.cpp \
+    src/algol/algol.cpp
 
 TEST_SRCS = \
     tests/test_main.cpp \
     src/brainfuck/brainfuck.cpp \
     src/math/bloom.cpp \
-    src/achievements/achievements.cpp
+    src/achievements/achievements.cpp \
+    src/algol/algol.cpp
 
 TARGET      = build/hypertension
 TEST_TARGET = build/test_main
