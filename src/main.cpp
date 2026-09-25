@@ -1,6 +1,7 @@
 #include "achievements/achievements.hpp"
 #include "algol/algol.hpp"
 #include "cli/cli.hpp"
+#include "forth/forth.hpp"
 #include "fortran/fortran.hpp"
 #include "math/bloom.hpp"
 #include "prolog/prolog.hpp"
@@ -9,6 +10,7 @@
 #include "util/timing.hpp"
 
 #include <array>
+#include <cmath>
 #include <format>
 #include <iostream>
 #include <string>
@@ -162,18 +164,47 @@ int run_extended_search(int value) {
 
     const char* pl_mark = pl_result->admissible ? "\xe2\x9c\x93" : "\xe2\x9c\x97";
     std::cout << pl_mark << " Logical admissibility        Prolog         "
-              << hypertension::format_time(pl_result->elapsed_ns) << "\n\n";
+              << hypertension::format_time(pl_result->elapsed_ns) << "\n";
 
     if (!pl_result->admissible) {
-        std::cout << "Verification rejected.\n\n"
+        std::cout << "\nVerification rejected.\n\n"
                   << "The available evidence does not logically permit this result.\n";
         return 2;
     }
 
+    // Convert the confidence percentage into basis points so that the
+    // canonical record remains independent of locale-sensitive floating
+    // point textual representations and equivalent evidence cannot acquire
+    // multiple serial forms.
+    hypertension::forth::SealEvidence seal_ev{
+        value,
+        static_cast<int>(DATASET.size()),
+        cpp_result.has_value(),
+        cpp_result ? static_cast<int>(*cpp_result) : -1,
+        *bloom_result,
+        true,   // consensus was established above
+        static_cast<int>(std::lround(conf_result->confidence * 100.0)),
+        true    // Prolog declared admissible above
+    };
+
+    std::string forth_error;
+    auto seal_result = hypertension::forth::record_finalization(seal_ev, forth_error);
+
+    if (!seal_result.has_value()) {
+        std::cout << "\xe2\x9c\x97 Record finalization          Forth\n\n"
+                  << "Verification incomplete.\n\n"
+                  << "The verification record could not be sealed.\n";
+        return 2;
+    }
+
+    std::cout << "\xe2\x9c\x93 Record finalization          Forth           "
+              << hypertension::format_time(seal_result->elapsed_ns) << "\n\n";
+
     std::cout << "Consensus established.\n"
               << "Verification confidence: "
               << std::format("{:.2f}", conf_result->confidence) << "%\n"
-              << "Evidence logically admissible.\n\n";
+              << "Evidence logically admissible.\n"
+              << "Verification record sealed.\n\n";
 
     if (cpp_result) {
         if (!hypertension::achievements::is_unlocked(hypertension::achievements::MATHEMATICALLY_CORRECT)) {

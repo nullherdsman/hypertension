@@ -9,6 +9,7 @@ add_executable(hypertension
     src/main.cpp
     src/cli/cli.cpp
     src/runtime/mode.cpp
+    src/forth/forth.cpp
 )
 
 target_include_directories(hypertension PRIVATE src)
